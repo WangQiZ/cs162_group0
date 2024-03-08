@@ -101,7 +101,8 @@ static void start_process(void* file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
   }
-
+    if_.esp -= 0xc;
+    if_.esp -= 0x8;
   /* Handle failure with succesful PCB malloc. Must free the PCB */
   if (!success && pcb_success) {
     // Avoid race where PCB is freed before t->pcb is set to NULL
