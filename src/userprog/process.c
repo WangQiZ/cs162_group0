@@ -50,7 +50,7 @@ void userprog_init(void) {
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
-pid_t process_execute(const char* file_name) {
+pid_t process_execute(const char* proc_cmd) {
   char* fn_copy;
   tid_t tid;
 
@@ -60,10 +60,10 @@ pid_t process_execute(const char* file_name) {
   fn_copy = palloc_get_page(0);
   if (fn_copy == NULL)
     return TID_ERROR;
-  strlcpy(fn_copy, file_name, PGSIZE);
+  strlcpy(fn_copy, proc_cmd, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(proc_cmd, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
@@ -71,16 +71,33 @@ pid_t process_execute(const char* file_name) {
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* file_name_) {
-  char* file_name = (char*)file_name_;
+static void start_process(void* cmd_) {
+  char* cmd = (char*)cmd_;
   struct thread* t = thread_current();
   struct intr_frame if_;
   bool success, pcb_success;
 
+  int argc = 0;
+  char *argv[MAX_ARGC];
+  int cmd_total_len = 0;
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
 
+  /*拆分字符串*/
+  if(success) {
+    char *saveptr;
+    char *token = strtok_r(cmd_, " ", &saveptr);
+
+    for(argc = 0; argc < MAX_ARGC && token != NULL; argc++) {
+      int arg_len = strlen(token) + 1;
+      argv[argc] = (char*)malloc(arg_len);
+      strlcpy(argv[argc], token, arg_len);
+      cmd_total_len += arg_len;
+      token = strtok_r(NULL, " ", &saveptr);
+    }
+
+  }
   /* Initialize process control block */
   if (success) {
     // Ensure that timer_interrupt() -> schedule() -> process_activate()
@@ -90,7 +107,7 @@ static void start_process(void* file_name_) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
-    strlcpy(t->pcb->process_name, t->name, sizeof t->name);
+    strlcpy(t->pcb->process_name, argv[0], (strlen(argv[0]) + 1));
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -99,10 +116,39 @@ static void start_process(void* file_name_) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-    success = load(file_name, &if_.eip, &if_.esp);
+    success = load(argv[0], &if_.eip, &if_.esp);
   }
-    if_.esp -= 0xc;
-    if_.esp -= 0x8;
+
+  //下面要进行对齐 然后把参数压入stack
+  if(success) {
+    // argv[] + argc + argv + data
+    int size = (argc + 1) * sizeof(char *) + sizeof(int) + sizeof(char**) + cmd_total_len;
+    // 对齐 需要额外
+    int align_size = 0x10 - size % 0x10;
+    if_.esp -= (size + align_size);
+    memset(if_.esp, 0, size + align_size);
+
+    void* esp = if_.esp + size + align_size;
+    esp -= 0x4;
+    *(char**)esp = NULL; // argv[argc] = NULL
+    // push pointers to the arguments onto the stack
+    for (int i = argc - 1; i >= 0; i--) {
+      esp -= 0x4;
+      *(char**)esp = argv[i];
+    }
+    esp -= 0x4;
+    *(char***)esp = (esp + 0x4); // push pointer to argv
+
+    esp -= 0x4;
+    *(int*)esp = argc; // push argc
+
+    esp -= 0x4;
+    *(char**)esp = NULL; // push fake return address
+    if_.esp = esp;
+
+
+  }
+
   /* Handle failure with succesful PCB malloc. Must free the PCB */
   if (!success && pcb_success) {
     // Avoid race where PCB is freed before t->pcb is set to NULL
@@ -114,7 +160,7 @@ static void start_process(void* file_name_) {
   }
 
   /* Clean up. Exit on failure or jump to userspace */
-  palloc_free_page(file_name);
+  palloc_free_page(cmd_);
   if (!success) {
     sema_up(&temporary);
     thread_exit();
