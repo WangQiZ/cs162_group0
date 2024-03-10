@@ -4,12 +4,23 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/process.h"
+#include "threads/vaddr.h"
+
+/*判断参数位置是否invalid*/
+bool check_args(uint32_t*args, int num) {
+  if(is_user_vaddr(&args[num])) {
+    return true;
+  } 
+  return false;
+}
+
+
 
 static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
-static void syscall_handler(struct intr_frame* f UNUSED) {
+static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = ((uint32_t*)f->esp);
 
   /*
@@ -21,9 +32,27 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
   /* printf("System call number: %d\n", args[0]); */
 
-  if (args[0] == SYS_EXIT) {
-    f->eax = args[1];
-    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
-    process_exit();
-  } 
+  switch(args[0]) {
+    case SYS_EXIT:
+        f->eax = args[1];
+        printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
+        process_exit();
+        break;
+    case SYS_PRACTICE:
+        f->eax = args[1] + 1;
+        break;
+    case SYS_WRITE:
+        if(args[1] == STDOUT_FILENO) {
+          putbuf((char*)args[2], args[3]);
+          f->eax = args[3];
+        } else {
+          NOT_REACHED();
+        }
+        break;
+    default:
+        NOT_REACHED();
+        break;
+  }
+
+  
 }

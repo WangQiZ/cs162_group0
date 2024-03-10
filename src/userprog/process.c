@@ -129,21 +129,36 @@ static void start_process(void* cmd_) {
     memset(if_.esp, 0, size + align_size);
 
     void* esp = if_.esp + size + align_size;
+    
+    // esp -= cmd_total_len;
+    // memcpy(esp, cmd, cmd_total_len);
+    for(int i = argc - 1; i >=0; i--) {
+      esp -= (strlen(argv[i]) + 1);
+      memcpy(esp, argv[i], (strlen(argv[i]) + 1));
+    }
+
+
+    void* position = esp;
+
+    esp -= align_size;
     esp -= 0x4;
-    *(char**)esp = NULL; // argv[argc] = NULL
+    *(char**)esp = NULL; 
+    int offset = cmd_total_len;
     // push pointers to the arguments onto the stack
     for (int i = argc - 1; i >= 0; i--) {
       esp -= 0x4;
-      *(char**)esp = argv[i];
+      offset -= (strlen(argv[i]) + 1);
+      *(char**)esp = position + offset;
     }
+    
     esp -= 0x4;
-    *(char***)esp = (esp + 0x4); // push pointer to argv
+    *(char***)esp = (esp + 0x4); 
 
     esp -= 0x4;
-    *(int*)esp = argc; // push argc
+    *(int*)esp = argc; 
 
     esp -= 0x4;
-    *(char**)esp = NULL; // push fake return address
+    *(char**)esp = NULL; 
     if_.esp = esp;
 
 
