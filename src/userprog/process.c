@@ -131,6 +131,12 @@ static void start_process(void* cmd_) {
     void* esp = if_.esp + size + align_size;
     esp -= 0x4;
     *(char**)esp = NULL; // argv[argc] = NULL
+
+    esp -= cmd_total_len;
+    memcmp(esp, cmd, cmd_total_len);
+
+    esp -= align_size;
+
     // push pointers to the arguments onto the stack
     for (int i = argc - 1; i >= 0; i--) {
       esp -= 0x4;
