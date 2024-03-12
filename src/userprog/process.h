@@ -29,6 +29,12 @@ struct process {
   struct thread* main_thread; /* Pointer to main thread */
 };
 
+//子进程列表，需要保存返回状态，需要知道自己的pid，需要信号量来判断是否执行完成，需要知道父进程pid
+struct child_process {
+   
+};
+
+
 void userprog_init(void);
 
 pid_t process_execute(const char* file_name);

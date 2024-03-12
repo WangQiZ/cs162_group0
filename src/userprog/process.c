@@ -200,8 +200,9 @@ static void start_process(void* cmd_) {
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(pid_t child_pid UNUSED) {
+int process_wait(pid_t child_pid) {
   sema_down(&temporary);
+  
   return 0;
 }
 
