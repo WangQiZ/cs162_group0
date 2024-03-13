@@ -3,7 +3,7 @@
 
 #include "threads/thread.h"
 #include <stdint.h>
-
+#include<list.h>
 // At most 8MB can be allocated to the stack
 // These defines will be used in Project 2: Multithreading
 #define MAX_STACK_PAGES (1 << 11)
@@ -27,7 +27,18 @@ struct process {
   uint32_t* pagedir;          /* Page directory. */
   char process_name[16];      /* Name of the main thread */
   struct thread* main_thread; /* Pointer to main thread */
+  pid_t father_pid;           //保存下父进程pid
 };
+
+//子进程列表，需要保存返回状态，需要知道自己的pid，需要信号量来判断是否执行完成，需要知道父进程pid
+struct child_process {
+   struct list_elem child_elem;
+   int exit_status;
+   pid_t child_pid;
+   pid_t father_pid;
+   struct semaphore exit_wait;
+};
+
 
 void userprog_init(void);
 

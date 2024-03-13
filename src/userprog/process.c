@@ -26,6 +26,11 @@ static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
 bool setup_thread(void (**eip)(void), void** esp);
 
+
+static struct list list_all_children;
+
+
+
 /* Initializes user programs in the system by ensuring the main
    thread has a minimal PCB so that it can execute and wait for
    the first user process. Any additions to the PCB should be also
@@ -42,6 +47,7 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
 
+  list_init(&list_all_children);
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
@@ -53,6 +59,8 @@ void userprog_init(void) {
 pid_t process_execute(const char* proc_cmd) {
   char* fn_copy;
   tid_t tid;
+  struct child_process *process_child;
+  struct thread* t = thread_current();
 
   sema_init(&temporary, 0);
   /* Make a copy of FILE_NAME.
@@ -64,6 +72,17 @@ pid_t process_execute(const char* proc_cmd) {
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(proc_cmd, PRI_DEFAULT, start_process, fn_copy);
+
+  process_child = (struct child_process*)malloc(sizeof(struct child_process));
+  if(process_child == NULL) {
+    palloc_free_page(fn_copy);
+    return TID_ERROR;
+  };
+  process_child->child_pid = tid;
+  process_child->father_pid = t->tid;
+  sema_init(&process_child->exit_wait, 0);
+  list_push_back(&list_all_children, &process_child->child_elem);
+
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
@@ -191,6 +210,18 @@ static void start_process(void* cmd_) {
   NOT_REACHED();
 }
 
+//
+struct child_process* find_child(pid_t father_pid, pid_t child_pid) {
+    struct list_elem *e;
+    for(e = list_begin(&list_all_children); e != list_end(&list_all_children); e = list_next(e)) {
+      struct child_process *child = list_entry(e, struct child_process, child_elem);
+      if(child->father_pid == father_pid && child->child_pid == child_pid) {
+        return child;
+      }
+    }
+    return NULL;
+}
+
 /* Waits for process with PID child_pid to die and returns its exit status.
    If it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If child_pid is invalid or if it was not a
@@ -200,8 +231,15 @@ static void start_process(void* cmd_) {
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(pid_t child_pid UNUSED) {
-  sema_down(&temporary);
+int process_wait(pid_t child_pid) {
+    sema_down(&temporary);
+    struct thread *t = thread_current();
+    
+    struct child_process *child = find_child(t->tid, child_pid);
+    if(child == NULL) {
+      return -1;
+    }
+  
   return 0;
 }
 
