@@ -30,3 +30,9 @@ wait
 1. process init的时候创建一个child_process list
 2. process excute中在子进程创建后要更新list
 3. wait遍历list根据状态返回
+
+注意process的order
+原order
+父进程创建 父进程等待 子进程准备 子进程运行 
+
+打印一些语句发现, 去掉semaphore temporary之后 父进程未等到子进程准备好就退出

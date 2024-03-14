@@ -7,14 +7,14 @@
 #include "threads/vaddr.h"
 #include "devices/shutdown.h"
 
+
 /*判断参数位置是否invalid*/
 void check_args(uint32_t*args, int num) {
-  if(is_user_vaddr(&args[num])) {
+  if(is_user_vaddr(&args[num]) != true && pagedir_get_page(thread_current()->pcb->pagedir, &args[num]) == NULL) {
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
-      process_exit();
+      process_exit(-1);
   } 
 }
-
 
 
 static void syscall_handler(struct intr_frame*);
@@ -35,9 +35,9 @@ static void syscall_handler(struct intr_frame* f) {
 
   switch(args[0]) {
     case SYS_EXIT:
-        f->eax = args[1];
+        check_args(args, 1);
         printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
-        process_exit();
+        process_exit(args[1]);
         break;
     case SYS_PRACTICE:
         f->eax = args[1] + 1;

@@ -20,7 +20,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
@@ -28,7 +27,14 @@ bool setup_thread(void (**eip)(void), void** esp);
 
 
 static struct list list_all_children;
+static struct lock list_lock;
 
+struct mul_args {
+  char * process_cmd;
+  pid_t father_pid;
+  struct semaphore child_create_sema;
+  struct semaphore child_exec_sema;
+};
 
 
 /* Initializes user programs in the system by ensuring the main
@@ -48,6 +54,7 @@ void userprog_init(void) {
   success = t->pcb != NULL;
 
   list_init(&list_all_children);
+  lock_init(&list_lock);
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
@@ -61,8 +68,9 @@ pid_t process_execute(const char* proc_cmd) {
   tid_t tid;
   struct child_process *process_child;
   struct thread* t = thread_current();
-
-  sema_init(&temporary, 0);
+  struct mul_args *process_args = (struct mul_args*)malloc(sizeof(struct mul_args));
+  if(process_args == NULL)
+    return TID_ERROR;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
@@ -70,28 +78,39 @@ pid_t process_execute(const char* proc_cmd) {
     return TID_ERROR;
   strlcpy(fn_copy, proc_cmd, PGSIZE);
 
+  process_args->process_cmd = fn_copy;
+  process_args->father_pid = t->tid;
+  sema_init(&process_args->child_create_sema, 0);
+  sema_init(&process_args->child_exec_sema, 0);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(proc_cmd, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(proc_cmd, PRI_DEFAULT, start_process, (void*)process_args);
 
+
+  sema_down(&process_args->child_create_sema);
   process_child = (struct child_process*)malloc(sizeof(struct child_process));
   if(process_child == NULL) {
     palloc_free_page(fn_copy);
+    free(process_args);
     return TID_ERROR;
   };
   process_child->child_pid = tid;
   process_child->father_pid = t->tid;
+  process_child->exit_status = 0;
   sema_init(&process_child->exit_wait, 0);
   list_push_back(&list_all_children, &process_child->child_elem);
 
-  if (tid == TID_ERROR)
+  sema_up(&process_args->child_exec_sema);
+  if (tid == TID_ERROR) {
     palloc_free_page(fn_copy);
+    free(process_args);
+  }
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* cmd_) {
-  char* cmd = (char*)cmd_;
+static void start_process(void* args_) {
+  struct mul_args* process_args = (struct mul_args*)args_;
   struct thread* t = thread_current();
   struct intr_frame if_;
   bool success, pcb_success;
@@ -103,6 +122,7 @@ static void start_process(void* cmd_) {
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
 
+  char *cmd_ = process_args->process_cmd;
   /*拆分字符串*/
   if(success) {
     char *saveptr;
@@ -126,6 +146,7 @@ static void start_process(void* cmd_) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
+    t->pcb->father_pid = process_args->father_pid;
     strlcpy(t->pcb->process_name, argv[0], (strlen(argv[0]) + 1));
   }
 
@@ -179,8 +200,6 @@ static void start_process(void* cmd_) {
     esp -= 0x4;
     *(char**)esp = NULL; 
     if_.esp = esp;
-
-
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -193,13 +212,12 @@ static void start_process(void* cmd_) {
     free(pcb_to_free);
   }
 
+  sema_up(&process_args->child_create_sema);
+  sema_down(&process_args->child_exec_sema);
   /* Clean up. Exit on failure or jump to userspace */
-  palloc_free_page(cmd_);
   if (!success) {
-    sema_up(&temporary);
     thread_exit();
   }
-
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -212,13 +230,16 @@ static void start_process(void* cmd_) {
 
 //
 struct child_process* find_child(pid_t father_pid, pid_t child_pid) {
+      lock_acquire(&list_lock);
     struct list_elem *e;
     for(e = list_begin(&list_all_children); e != list_end(&list_all_children); e = list_next(e)) {
       struct child_process *child = list_entry(e, struct child_process, child_elem);
       if(child->father_pid == father_pid && child->child_pid == child_pid) {
+            lock_release(&list_lock);
         return child;
       }
     }
+        lock_release(&list_lock);
     return NULL;
 }
 
@@ -232,19 +253,36 @@ struct child_process* find_child(pid_t father_pid, pid_t child_pid) {
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int process_wait(pid_t child_pid) {
-    sema_down(&temporary);
+
     struct thread *t = thread_current();
     
     struct child_process *child = find_child(t->tid, child_pid);
     if(child == NULL) {
       return -1;
     }
-  
-  return 0;
+    sema_down(&child->exit_wait);
+    int exit_status = child->exit_status;
+    list_remove(&child->child_elem);
+    free(child);
+  return exit_status;
+}
+
+void kill_all_child(pid_t father_pid) {
+  lock_acquire(&list_lock);
+
+  struct list_elem * e;
+  for(e = list_begin(&list_all_children); e != list_end(&list_all_children); e = list_next(e)) {
+    struct child_process *child = list_entry(e, struct child_process, child_elem);
+    if(child->father_pid == father_pid) {
+      list_remove(&child->child_elem);
+      free(child);
+    }
+  }
+  lock_release(&list_lock);
 }
 
 /* Free the current process's resources. */
-void process_exit(void) {
+void process_exit(int status) {
   struct thread* cur = thread_current();
   uint32_t* pd;
 
@@ -270,6 +308,16 @@ void process_exit(void) {
     pagedir_destroy(pd);
   }
 
+    struct child_process * child = find_child(cur->pcb->father_pid, cur->tid);
+    if(child) {
+      child->exit_status = status;
+      sema_up(&child->exit_wait);
+    }
+
+    //杀死所有子进程
+    kill_all_child(cur->tid);
+
+
   /* Free the PCB of this process and kill this thread
      Avoid race where PCB is freed before t->pcb is set to NULL
      If this happens, then an unfortuantely timed timer interrupt
@@ -278,7 +326,6 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
-  sema_up(&temporary);
   thread_exit();
 }
 
