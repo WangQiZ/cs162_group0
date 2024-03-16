@@ -32,6 +32,7 @@ static struct lock list_lock;
 struct mul_args {
   char * process_cmd;
   pid_t father_pid;
+  int is_success;
   struct semaphore child_create_sema;
   struct semaphore child_exec_sema;
 };
@@ -80,6 +81,7 @@ pid_t process_execute(const char* proc_cmd) {
 
   process_args->process_cmd = fn_copy;
   process_args->father_pid = t->tid;
+  process_args->is_success = 0;
   sema_init(&process_args->child_create_sema, 0);
   sema_init(&process_args->child_exec_sema, 0);
   /* Create a new thread to execute FILE_NAME. */
@@ -87,6 +89,14 @@ pid_t process_execute(const char* proc_cmd) {
 
 
   sema_down(&process_args->child_create_sema);
+
+  if(process_args->is_success == 0)
+  {
+    palloc_free_page(fn_copy);
+    free(process_args);
+    return TID_ERROR;
+  };
+
   process_child = (struct child_process*)malloc(sizeof(struct child_process));
   if(process_child == NULL) {
     palloc_free_page(fn_copy);
@@ -100,10 +110,10 @@ pid_t process_execute(const char* proc_cmd) {
   list_push_back(&list_all_children, &process_child->child_elem);
 
   sema_up(&process_args->child_exec_sema);
-  if (tid == TID_ERROR) {
-    palloc_free_page(fn_copy);
-    free(process_args);
-  }
+
+  palloc_free_page(fn_copy);
+  free(process_args);
+
   return tid;
 }
 
@@ -211,7 +221,7 @@ static void start_process(void* args_) {
     t->pcb = NULL;
     free(pcb_to_free);
   }
-
+  process_args->is_success = success;
   sema_up(&process_args->child_create_sema);
   sema_down(&process_args->child_exec_sema);
   /* Clean up. Exit on failure or jump to userspace */
