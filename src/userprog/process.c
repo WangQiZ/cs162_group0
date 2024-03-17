@@ -28,6 +28,8 @@ bool setup_thread(void (**eip)(void), void** esp);
 
 static struct list list_all_children;
 static struct lock list_lock;
+static struct lock fd_lock;
+static int file_descriptor = 5;
 
 struct mul_args {
   char * process_cmd;
@@ -37,6 +39,50 @@ struct mul_args {
   struct semaphore child_exec_sema;
 };
 
+/*关于文件的处理*/
+
+int allocate_fd(void) {
+  lock_acquire(&fd_lock);
+  int fd = file_descriptor++;
+  lock_release(&fd_lock);
+  return fd;
+}
+
+int process_openfile(struct file* file) {
+  struct process_file *pfile = (struct process_file*)malloc(sizeof(struct process_file));
+  if(pfile == NULL)
+  return -1;
+  struct thread* t = thread_current();
+  pfile->fd = allocate_fd();
+  pfile->file = file;
+  list_push_back(&t->pcb->file_list, &pfile->file_elem);
+  return pfile->fd;
+}
+
+struct file* find_file(int fd) {
+  struct thread *t = thread_current();
+  struct list_elem *e;
+  struct list *flist = &t->pcb->file_list;
+  for(e = list_begin(flist); e != list_end(flist); e = list_next(e)) {
+    struct process_file * pfile = list_entry(e, struct process_file, file_elem);
+    if(pfile->fd == fd)
+      return pfile->file;
+  }
+  return NULL;
+}
+
+void close_file(int fd) {
+  struct thread *t = thread_current();
+  struct list_elem *e;
+  struct list *flist = &t->pcb->file_list;
+  for(e = list_begin(flist); e != list_end(flist); e = list_next(e)) {
+    struct process_file * pfile = list_entry(e, struct process_file, file_elem);
+    if(pfile->fd == fd) {
+      list_remove(&pfile->file_elem);
+    }
+      
+  }
+}
 
 /* Initializes user programs in the system by ensuring the main
    thread has a minimal PCB so that it can execute and wait for
@@ -56,6 +102,7 @@ void userprog_init(void) {
 
   list_init(&list_all_children);
   lock_init(&list_lock);
+  lock_init(&fd_lock);
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
@@ -158,6 +205,7 @@ static void start_process(void* args_) {
     t->pcb->main_thread = t;
     t->pcb->father_pid = process_args->father_pid;
     strlcpy(t->pcb->process_name, argv[0], (strlen(argv[0]) + 1));
+    list_init(&t->pcb->file_list);
   }
 
   /* Initialize interrupt frame and load executable. */

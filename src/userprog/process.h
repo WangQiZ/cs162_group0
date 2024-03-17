@@ -28,6 +28,7 @@ struct process {
   char process_name[16];      /* Name of the main thread */
   struct thread* main_thread; /* Pointer to main thread */
   pid_t father_pid;           //保存下父进程pid
+  struct list file_list;
 };
 
 //子进程列表，需要保存返回状态，需要知道自己的pid，需要信号量来判断是否执行完成，需要知道父进程pid
@@ -38,8 +39,16 @@ struct child_process {
    pid_t father_pid;
    struct semaphore exit_wait;
 };
+//文件列表
+struct process_file {
+   struct list_elem file_elem;
+   int fd;
+   struct file* file;
+};
 
-
+int process_openfile(struct file* file);
+struct file* find_file(int fd);
+void close_file(int fd);
 void userprog_init(void);
 
 pid_t process_execute(const char* file_name);
