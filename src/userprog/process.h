@@ -29,6 +29,7 @@ struct process {
   struct thread* main_thread; /* Pointer to main thread */
   pid_t father_pid;           //保存下父进程pid
   struct list file_list;
+  struct file* exec_file;    //保存执行文件
 };
 
 //子进程列表，需要保存返回状态，需要知道自己的pid，需要信号量来判断是否执行完成，需要知道父进程pid

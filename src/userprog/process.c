@@ -19,6 +19,7 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "filesys/inode.h"
 
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
@@ -159,7 +160,6 @@ pid_t process_execute(const char* proc_cmd) {
   sema_up(&process_args->child_exec_sema);
 
   palloc_free_page(fn_copy);
-  free(process_args);
 
   return tid;
 }
@@ -272,6 +272,7 @@ static void start_process(void* args_) {
   process_args->is_success = success;
   sema_up(&process_args->child_create_sema);
   sema_down(&process_args->child_exec_sema);
+  free(process_args);
   /* Clean up. Exit on failure or jump to userspace */
   if (!success) {
     thread_exit();
@@ -374,7 +375,7 @@ void process_exit(int status) {
 
     //杀死所有子进程
     kill_all_child(cur->tid);
-
+    file_close(cur->pcb->exec_file);
 
   /* Free the PCB of this process and kill this thread
      Avoid race where PCB is freed before t->pcb is set to NULL
@@ -493,7 +494,7 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
-
+  file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
       memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 ||
@@ -563,7 +564,11 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  if(success) {
+    t->pcb->exec_file = file;
+  } else {
+    file_close(file);
+  }
   return success;
 }
 
