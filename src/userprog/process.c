@@ -20,6 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "filesys/inode.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
@@ -475,6 +476,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool load(const char* file_name, void (**eip)(void), void** esp) {
+  lock_acquire(&file_lock);
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -569,6 +571,7 @@ done:
   } else {
     file_close(file);
   }
+  lock_release(&file_lock);
   return success;
 }
 

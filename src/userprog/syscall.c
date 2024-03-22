@@ -10,7 +10,7 @@
 #include "filesys/file.h"
 #include "filesys/inode.h"
 
-static struct lock file_lock;
+struct lock file_lock;
 
 void exit_process(void) {
       printf("%s: exit(-1)\n", thread_current()->pcb->process_name);
