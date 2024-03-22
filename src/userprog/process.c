@@ -20,6 +20,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "filesys/inode.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
@@ -340,6 +341,17 @@ void kill_all_child(pid_t father_pid) {
   lock_release(&list_lock);
 }
 
+void close_all_file(struct process *p) {
+  struct list_elem *e, *next;
+  for(e = list_begin(&p->file_list); e != list_end(&p->file_list); e = next) {
+    next = list_next(e);//?????????????????
+    struct process_file *pro_file = list_entry(e, struct process_file, file_elem);
+    list_remove(&pro_file->file_elem);
+    file_close(pro_file->file);
+    free(pro_file);
+  }
+}
+
 /* Free the current process's resources. */
 void process_exit(int status) {
   struct thread* cur = thread_current();
@@ -376,6 +388,8 @@ void process_exit(int status) {
     //杀死所有子进程
     kill_all_child(cur->tid);
     file_close(cur->pcb->exec_file);
+    close_all_file(cur->pcb);
+    
 
   /* Free the PCB of this process and kill this thread
      Avoid race where PCB is freed before t->pcb is set to NULL
@@ -475,6 +489,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool load(const char* file_name, void (**eip)(void), void** esp) {
+  lock_acquire(&file_lock);
   struct thread* t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
@@ -569,6 +584,7 @@ done:
   } else {
     file_close(file);
   }
+  lock_release(&file_lock);
   return success;
 }
 
