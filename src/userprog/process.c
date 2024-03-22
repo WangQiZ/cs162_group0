@@ -344,7 +344,7 @@ void kill_all_child(pid_t father_pid) {
 void close_all_file(struct process *p) {
   struct list_elem *e, *next;
   for(e = list_begin(&p->file_list); e != list_end(&p->file_list); e = next) {
-    next = list_next(e);//?????????????????
+    next = list_next(e);
     struct process_file *pro_file = list_entry(e, struct process_file, file_elem);
     list_remove(&pro_file->file_elem);
     file_close(pro_file->file);
