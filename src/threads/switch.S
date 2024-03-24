@@ -15,6 +15,8 @@
 .globl switch_threads
 .func switch_threads
 switch_threads:
+	subl $FPU_SIZE, %esp
+	fsave (%esp)
 	# Save caller's register state.
 	#
 	# Note that the SVR4 ABI allows us to destroy %eax, %ecx, %edx,
@@ -45,12 +47,15 @@ switch_threads:
 	popl %esi
 	popl %ebp
 	popl %ebx
+	frstor (%esp)
+	addl $FPU_SIZE, %esp
         ret
 .endfunc
 
 .globl switch_entry
 .func switch_entry
 switch_entry:
+	finit
 	# Discard switch_threads() arguments.
 	addl $8, %esp
 

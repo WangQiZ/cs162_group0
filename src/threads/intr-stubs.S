@@ -1,5 +1,5 @@
 #include "threads/loader.h"
-
+#include "threads/switch.h"
         .text
 
 /* Main interrupt entry point.
@@ -17,6 +17,8 @@
 */
 .func intr_entry
 intr_entry:
+   subl $FPU_SIZE, %esp
+   fsave (%esp)
 	/* Save caller's registers. */
 	pushl %ds
 	pushl %es
@@ -55,7 +57,8 @@ intr_exit:
 	popl %fs
 	popl %es
 	popl %ds
-
+   frstor (%esp)
+   addl $FPU_SIZE, %esp
         /* Discard `struct intr_frame' vec_no, error_code,
            frame_pointer members. */
 	addl $12, %esp

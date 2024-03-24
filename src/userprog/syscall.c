@@ -9,7 +9,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "filesys/inode.h"
-
+#include "lib/float.h"
 struct lock file_lock;
 
 void exit_process(void) {
@@ -252,6 +252,10 @@ static void syscall_handler(struct intr_frame* f) {
         check_argv(args+1, 1);
         syscall_close(args[1]);
         break;   
+    case SYS_COMPUTE_E:
+        check_argv(args+1, 1);
+        f->eax = sys_sum_to_e(args[1]);
+        break;
     default:
         NOT_REACHED();
         break;
