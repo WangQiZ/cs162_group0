@@ -90,6 +90,10 @@ struct thread {
   int priority;              /* Priority. */
   struct list_elem allelem;  /* List element for all threads list. */
 
+  /*添加sleep tick*/
+  int64_t start_tick;       /*thread准备什么时候睡*/
+  int64_t sleep_tick;       /*thread睡多长时间*/
+
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 
@@ -149,4 +153,6 @@ void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
+void thread_sleep(int64_t start, int64_t sleep);
+void check_sleep_list(void);
 #endif /* threads/thread.h */

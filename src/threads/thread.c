@@ -28,6 +28,8 @@ static struct list fifo_ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+static struct list sleep_list;//thread 调用thread_sleep会移入这个队列
+
 /* Idle thread. */
 static struct thread* idle_thread;
 
@@ -72,6 +74,8 @@ static struct thread* thread_schedule_fair(void);
 static struct thread* thread_schedule_mlfqs(void);
 static struct thread* thread_schedule_reserved(void);
 
+void thread_sleep(int64_t start, int64_t sleep);
+void check_sleep_list(void);
 /* Determines which scheduler the kernel should use.
    Controlled by the kernel command-line options
     "-sched=fifo", "-sched=prio",
@@ -109,7 +113,7 @@ void thread_init(void) {
   lock_init(&tid_lock);
   list_init(&fifo_ready_list);
   list_init(&all_list);
-
+  list_init(&sleep_list);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();
   init_thread(initial_thread, "main", PRI_DEFAULT);
@@ -259,6 +263,28 @@ void thread_unblock(struct thread* t) {
   t->status = THREAD_READY;
   intr_set_level(old_level);
 }
+
+/**/
+void thread_sleep(int64_t start, int64_t sleep) {
+  struct thread *t = thread_current();
+  //关中断
+  if(sleep <= 0)
+    return;
+  enum intr_level old_level = intr_disable();
+  //将线程放入sleep队列，修改状态
+  list_push_back(&sleep_list, &t->elem);
+  t->start_tick = start;
+  t->sleep_tick = sleep;
+  thread_block();
+  intr_set_level(old_level);
+}
+
+
+
+
+
+
+
 
 /* Returns the name of the running thread. */
 const char* thread_name(void) { return thread_current()->name; }
@@ -527,6 +553,19 @@ void thread_switch_tail(struct thread* prev) {
     palloc_free_page(prev);
   }
 }
+
+void check_sleep_list(void) {//检查sleep list有没有需要唤醒的
+  struct list_elem *e, *next;
+  for(e = list_begin(&sleep_list); e != list_end(&sleep_list); e = next) {
+    next = list_next(e);
+    struct thread *t = list_entry(e, struct thread, elem);
+    if(timer_elapsed(t->start_tick) >= t->sleep_tick) {
+      list_remove(e);
+      thread_unblock(t);
+    }
+  }  
+}
+
 
 /* Schedules a new thread.  At entry, interrupts must be off and
    the running process's state must have been changed from
