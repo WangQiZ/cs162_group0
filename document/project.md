@@ -39,3 +39,36 @@ wait
 
 
 检查地址有效用了一种很慢的方法----检查每一个地址
+
+优先级
+1.改thread_create 比较现在的线程和新插入的线程的优先级，及时yield
+2.thread_unblock 线程应该按照优先级进入队列
+3.thread_yield 当前线程应该放弃cpu并且按照优先级进入队列
+4.thread_set_priority 设置当前线程优先级 对ready_list重新排序
+
+改变同步源语
+lock semaphore condition variables
+
+1.修改使之以优先级的顺序插入waiter list
+sema_down cond_wait
+2.按照优先级排序
+在waiters list的线程修改优先级
+sema_up 
+cond_signal
+
+优先级反转
+优先级捐赠
+nested donation
+multiple donation
+维护捐赠者列表
+修改
+init_thread -> 初始化捐赠的数据结构
+lock_acquire 
+1.如果lock不可用，保存锁的地址
+2.保存现在的优先级，维护在list
+3.捐赠
+
+lock_release
+移除线程恢复优先级
+thread_set_priority
+根据捐赠设置优先级
