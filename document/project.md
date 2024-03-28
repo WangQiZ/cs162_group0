@@ -61,3 +61,14 @@ cond_signal
 nested donation
 multiple donation
 维护捐赠者列表
+修改
+init_thread -> 初始化捐赠的数据结构
+lock_acquire 
+1.如果lock不可用，保存锁的地址
+2.保存现在的优先级，维护在list
+3.捐赠
+
+lock_release
+移除线程恢复优先级
+thread_set_priority
+根据捐赠设置优先级
