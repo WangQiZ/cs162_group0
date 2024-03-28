@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include "threads/synch.h"
 #include "threads/fixed-point.h"
-
+typedef bool(*compare_t)(struct list_elem*, struct list_elem*, void*);
 /* States in a thread's life cycle. */
 enum thread_status {
   THREAD_RUNNING, /* Running thread. */
@@ -155,4 +155,5 @@ int thread_get_load_avg(void);
 
 void thread_sleep(int64_t start, int64_t sleep);
 void check_sleep_list(void);
+bool less_priority(struct list_elem *insert_elem, struct list_elem *e, void* aux);
 #endif /* threads/thread.h */
