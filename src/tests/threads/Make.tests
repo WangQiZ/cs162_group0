@@ -84,7 +84,7 @@ $(foreach TEST,$(SCHED_MLFQS_TESTS), \
 
 # I honestly still do not entirely get where this is supposed to hook in
 $(MLFQS_OUTPUTS): KERNELFLAGS += -sched=mlfqs
-$(MLFQS_OUTPUTS): TIMEOUT = 480
+$(MLFQS_OUTPUTS): TIMEOUT = 10
 
 # Force native threads tests to use bochs simulator
 tests/threads/%.output: SIMULATOR = --bochs
