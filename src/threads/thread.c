@@ -252,7 +252,6 @@ static void thread_enqueue(struct thread* t) {
 
   if (active_sched_policy == SCHED_FIFO)
     list_push_back(&fifo_ready_list, &t->elem);
-<<<<<<< HEAD
   else {
     if(active_sched_policy == SCHED_PRIO) {
       bool(*less)(struct list_elem*, struct list_elem*, void*) = &less_priority;
@@ -260,11 +259,6 @@ static void thread_enqueue(struct thread* t) {
     }
   }
 
-=======
-  else
-    PANIC("Unimplemented scheduling policy value: %d", active_sched_policy);
-  /*list_insert_ordered(&ready_list, &elem, priority)*/
->>>>>>> 4e02c0a452d19a8d7c9062c274dba61b6936b7da
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
