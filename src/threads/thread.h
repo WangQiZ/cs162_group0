@@ -93,7 +93,9 @@ struct thread {
   /*添加sleep tick*/
   int64_t start_tick;       /*thread准备什么时候睡*/
   int64_t sleep_tick;       /*thread睡多长时间*/
-
+  int base_priority;
+  struct list lock_list;
+  struct lock *wait_lock;
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 
@@ -121,7 +123,7 @@ enum sched_policy {
  *  "-sched-default", "-sched-fair", "-sched-mlfqs", "-sched-fifo"
  * Is equal to SCHED_FIFO by default. */
 extern enum sched_policy active_sched_policy;
-
+struct list ready_list;
 void thread_init(void);
 void thread_start(void);
 

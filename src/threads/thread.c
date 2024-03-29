@@ -24,7 +24,7 @@
    that are ready to run but not actually running. */
 static struct list fifo_ready_list;
 
-static struct list ready_list;
+
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -372,12 +372,17 @@ void thread_foreach(thread_action_func* func, void* aux) {
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) { 
+  enum intr_level old_level = intr_disable();
   int old_priority = thread_current()->priority;
-  thread_current()->priority = new_priority; 
+  thread_current()->base_priority = new_priority; 
   // compare_t less = &less_priority;
   // list_sort(&ready_list, less, NULL);
-  thread_yield();
+  if(old_priority < new_priority || list_empty(&thread_current()->lock_list)) {
+    thread_current()->priority = new_priority;
+    thread_yield();
   }
+  intr_set_level(old_level);
+}
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void) { return thread_current()->priority; }
@@ -479,10 +484,12 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   t->priority = priority;
   t->pcb = NULL;
   t->magic = THREAD_MAGIC;
-
+  list_init(&t->lock_list);
+  t->base_priority = priority;
+  t->wait_lock = NULL;
   old_level = intr_disable();
   //list_push_back(&all_list, &t->allelem);
-  bool(*less)(struct list_elem*, struct list_elem*, void*) = &less_priority;
+  compare_t less = &less_priority;
   list_insert_ordered(&all_list, &t->allelem, less, NULL);
   intr_set_level(old_level);
 }
