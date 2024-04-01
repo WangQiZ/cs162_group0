@@ -30,6 +30,7 @@ struct process {
   pid_t father_pid;           //保存下父进程pid
   struct list file_list;
   struct file* exec_file;    //保存执行文件
+  struct list pthread_list;  //保存进程下的进程
 };
 
 //子进程列表，需要保存返回状态，需要知道自己的pid，需要信号量来判断是否执行完成，需要知道父进程pid
@@ -40,6 +41,16 @@ struct child_process {
    pid_t father_pid;
    struct semaphore exit_wait;
 };
+
+//线程列表，和子进程类似
+struct thread_process {
+   struct list_elem pthread_elem;
+   struct semaphore pthread_exit_wait;
+   tid_t tid;
+   bool has_joined;
+   int pthread_exit_status;
+};
+
 //文件列表
 struct process_file {
    struct list_elem file_elem;
