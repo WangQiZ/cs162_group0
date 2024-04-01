@@ -256,6 +256,17 @@ static void syscall_handler(struct intr_frame* f) {
         check_argv(args+1, 1);
         f->eax = sys_sum_to_e(args[1]);
         break;
+    case SYS_PT_CREATE:
+        check_argv(args+1, 3);
+        f->eax = pthread_execute((stub_fun)args[1], (pthread_fun)args[2], (void*)args[3]);
+        break;
+    case SYS_PT_JOIN:
+        check_argv(args+1, 1);
+        f->eax = pthread_join((tid_t)args[1]);
+        break;
+    case SYS_PT_EXIT:
+        pthread_exit();
+        break;
     default:
         NOT_REACHED();
         break;

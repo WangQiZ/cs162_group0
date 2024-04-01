@@ -8,7 +8,7 @@ int main(int argc UNUSED, char* argv[]) {
   msg("begin");
   random_init(0);
 #ifdef THREADS
-  console_init();
+  //console_init();
 #endif
   test_main();
   msg("end");
