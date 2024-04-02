@@ -267,6 +267,33 @@ static void syscall_handler(struct intr_frame* f) {
     case SYS_PT_EXIT:
         pthread_exit();
         break;
+    case SYS_LOCK_INIT:
+        check_argv(args+1, 1);
+        f->eax = init_user_lock(args[1]);
+        break;
+    case SYS_LOCK_ACQUIRE:
+        check_argv(args+1, 1);
+        f->eax = user_lock_acquire(args[1]);
+        break;
+    case SYS_LOCK_RELEASE:
+        check_argv(args+1, 1);
+        f->eax = user_lock_release(args[1]);
+        break;
+    case SYS_SEMA_INIT:
+        check_argv(args+1, 2);
+        f->eax = user_sema_init(args[1], args[2]);
+        break;
+    case SYS_SEMA_DOWN:
+        check_argv(args+1, 1);
+        f->eax = user_sema_down(args[1]);
+        break;
+    case SYS_SEMA_UP:
+        check_argv(args+1, 1);
+        f->eax = user_sema_up(args[1]);
+        break;
+    case SYS_GET_TID:
+      f->eax = thread_current()->tid;
+        break;
     default:
         NOT_REACHED();
         break;
