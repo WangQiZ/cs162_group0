@@ -291,9 +291,12 @@ static void syscall_handler(struct intr_frame* f) {
         check_argv(args+1, 1);
         f->eax = user_sema_up(args[1]);
         break;
+<<<<<<< HEAD
     case SYS_GET_TID:
       f->eax = thread_current()->tid;
         break;
+=======
+>>>>>>> a922f815a7ce5c7c772ee8c42c53c6749058e0c5
     default:
         NOT_REACHED();
         break;
