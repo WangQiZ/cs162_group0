@@ -30,7 +30,10 @@ struct process {
   pid_t father_pid;           //保存下父进程pid
   struct list file_list;
   struct file* exec_file;    //保存执行文件
-  struct list pthread_list;  //保存进程下的进程
+  struct list pthread_list;  //保存进程下的线程
+  struct list process_lock_list; //保存进程下所有的锁
+  struct list process_sema_list;
+  int pthread_count;
 };
 
 //子进程列表，需要保存返回状态，需要知道自己的pid，需要信号量来判断是否执行完成，需要知道父进程pid
@@ -58,6 +61,18 @@ struct process_file {
    struct file* file;
 };
 
+struct user_lock {
+   struct list_elem user_lock_elem;
+   char lock_id;
+   struct lock lock;
+};
+
+struct user_semaphore {
+   struct list_elem user_sema_elem;
+   char sema_id;
+   struct semaphore sema;
+};
+
 int process_openfile(struct file* file);
 struct file* find_file(int fd);
 void close_file(int fd);
@@ -75,5 +90,10 @@ tid_t pthread_execute(stub_fun, pthread_fun, void*);
 tid_t pthread_join(tid_t);
 void pthread_exit(void);
 void pthread_exit_main(void);
-
+bool init_user_lock(char* lock_id);
+bool user_lock_acquire(char* lock_id);
+bool user_lock_release(char* lock_id);
+bool user_sema_init(char* sema_id, int value);
+bool user_sema_down(char* sema_id);
+bool user_sema_up(char* sema_id);
 #endif /* userprog/process.h */

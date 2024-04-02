@@ -25,13 +25,15 @@
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
-bool setup_thread(void** esp);
+bool setup_thread(void** esp, int num);
 
 
 static struct list list_all_children;
 static struct lock list_lock;
 static struct lock fd_lock;
 static struct lock pthread_lock;
+static struct lock pthread_lock_lock;
+static struct lock pthread_sema_lock;
 static int file_descriptor = 5;
 
 struct mul_args {
@@ -107,6 +109,8 @@ void userprog_init(void) {
   lock_init(&list_lock);
   lock_init(&fd_lock);
   lock_init(&pthread_lock);
+  lock_init(&pthread_lock_lock);
+  lock_init(&pthread_sema_lock);
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
 }
@@ -210,6 +214,9 @@ static void start_process(void* args_) {
     strlcpy(t->pcb->process_name, argv[0], (strlen(argv[0]) + 1));
     list_init(&t->pcb->file_list);
     list_init(&t->pcb->pthread_list);
+    list_init(&t->pcb->process_lock_list);
+    list_init(&t->pcb->process_sema_list);
+    t->pcb->pthread_count = 0;
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -742,13 +749,13 @@ pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. You may find it necessary to change the
    function signature. */
-bool setup_thread(void** esp) {
+bool setup_thread(void** esp, int num) {
   uint8_t* kpage;
   bool success = false;
 
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
-    uint8_t* base = (uint8_t*)PHYS_BASE - (PGSIZE * 2);
+    uint8_t* base = (uint8_t*)PHYS_BASE - (PGSIZE * 2 * num);
     success = install_page(base - PGSIZE, kpage, true); //目前就分配一个thread的stack
     if (success)
       *esp = base;
@@ -836,8 +843,13 @@ static void start_pthread(void* args_) {
   if_.eflags = FLAG_IF | FLAG_MBS;
   if_.eip = (void*)t_args->sf;
 
+  int num = 0;
+  lock_acquire(&pthread_lock);
+  num = ++t->pcb->pthread_count;
+  lock_release(&pthread_lock);
+  
   //只能创建一个thread版本
-  success = setup_thread(&if_.esp);
+  success = setup_thread(&if_.esp, num);
 
   if(!success) {
     t_args->is_setup = false;
@@ -955,3 +967,126 @@ void pthread_exit(void) {
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
 void pthread_exit_main(void) {}
+
+
+//实际上传的是地址
+bool init_user_lock(char* lock_id) {
+  if(lock_id == NULL)
+    return false;
+  struct thread* t = thread_current();
+  struct user_lock* pthread_user_lock = malloc(sizeof(struct user_lock));
+  if(pthread_user_lock == NULL)
+    return false;
+  pthread_user_lock->lock_id = *lock_id;
+  lock_init(&pthread_user_lock->lock);
+  lock_acquire(&pthread_lock_lock);
+  list_push_back(&t->pcb->process_lock_list, &pthread_user_lock->user_lock_elem);
+  lock_release(&pthread_lock_lock);
+
+  return true;
+}
+
+bool user_lock_acquire(char* lock_id) {
+  if(lock_id == NULL)
+    return false;
+  struct thread* t = thread_current();
+  struct user_lock* pthread_user_lock = NULL;
+  lock_acquire(&pthread_lock_lock);
+  struct list_elem *e;
+  for(e = list_begin(&t->pcb->process_lock_list); e != list_end(&t->pcb->process_lock_list);
+  e = list_next(e)) {
+    struct user_lock* tmp = list_entry(e, struct user_lock, user_lock_elem);
+    if(tmp->lock_id == *lock_id){
+      pthread_user_lock = tmp;
+      break;
+    }
+  }
+  lock_release(&pthread_lock_lock);
+  if(pthread_user_lock == NULL || pthread_user_lock->lock.holder == t)
+    return false;
+
+  lock_acquire(&pthread_user_lock->lock);
+  return true;
+}
+
+bool user_lock_release(char* lock_id) {
+  if(lock_id == NULL)
+    return false;
+  struct thread* t = thread_current();
+  struct user_lock* pthread_user_lock = NULL;
+  lock_acquire(&pthread_lock_lock);
+  struct list_elem *e;
+  for(e = list_begin(&t->pcb->process_lock_list); e != list_end(&t->pcb->process_lock_list);
+  e = list_next(e)) {
+    struct user_lock* tmp = list_entry(e, struct user_lock, user_lock_elem);
+    if(tmp->lock_id == *lock_id){
+      pthread_user_lock = tmp;
+      break;
+    }
+  }
+  lock_release(&pthread_lock_lock);
+  if(pthread_user_lock == NULL || pthread_user_lock->lock.holder != t)
+    return false; 
+  lock_release(&pthread_user_lock->lock);
+  return true;
+}
+
+bool user_sema_init(char* sema_id, int value) {
+  if(sema_id == NULL || value < 0)
+    return false;
+  struct thread *t = thread_current();
+  struct user_semaphore *user_sema = malloc(sizeof(struct user_semaphore));
+  if(user_sema == NULL)
+    return false;
+  user_sema->sema_id = *sema_id;
+  sema_init(&user_sema->sema, value);
+  lock_acquire(&pthread_sema_lock);
+  list_push_back(&t->pcb->process_sema_list, &user_sema->user_sema_elem);
+  lock_release(&pthread_sema_lock);
+
+  return true;  
+}
+
+bool user_sema_down(char* sema_id) {
+  if(sema_id == NULL)
+    return false;
+  struct thread* t = thread_current();
+  struct user_semaphore * user_sema = NULL;
+  lock_acquire(&pthread_sema_lock);
+  struct list_elem *e;
+  for(e = list_begin(&t->pcb->process_sema_list); e != list_end(&t->pcb->process_sema_list);
+  e = list_next(e)) {
+    struct user_semaphore *tmp = list_entry(e, struct user_semaphore, user_sema_elem);
+    if(tmp->sema_id == sema_id) {
+      user_sema == tmp;
+      break;
+    }
+  }
+  lock_release(&pthread_sema_lock);
+  if(user_sema == NULL)
+    return false;
+  sema_down(&user_sema->sema);
+  return true;
+}
+
+bool user_sema_up(char* sema_id) {
+  if(sema_id == NULL)
+    return false;
+  struct thread* t = thread_current();
+  struct user_semaphore * user_sema = NULL;
+  lock_acquire(&pthread_sema_lock);
+  struct list_elem *e;
+  for(e = list_begin(&t->pcb->process_sema_list); e != list_end(&t->pcb->process_sema_list);
+  e = list_next(e)) {
+    struct user_semaphore *tmp = list_entry(e, struct user_semaphore, user_sema_elem);
+    if(tmp->sema_id == sema_id) {
+      user_sema == tmp;
+      break;
+    }
+  }
+  lock_release(&pthread_sema_lock);
+  if(user_sema == NULL)
+    return false;
+  sema_up(&user_sema->sema);
+  return true;
+}
